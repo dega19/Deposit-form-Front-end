@@ -1,0 +1,159 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Bank Deposit Form</title>
+  <style>
+    :root{font-family:system-ui,-apple-system,Segoe UI,Roboto,"Helvetica Neue",Arial; --maxw:720px;}
+    body{display:flex;align-items:center;justify-content:center;min-height:100vh;background:#f5f7fb;margin:0;padding:24px;}
+    .card{width:100%;max-width:var(--maxw);background:white;border-radius:10px;box-shadow:0 6px 20px rgba(20,30,50,.08);padding:20px;}
+    h1{font-size:20px;margin:0 0 14px;}
+    .row{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px;}
+    label{display:block;font-size:13px;margin-bottom:6px;color:#233;}
+    input[type="text"], input[type="number"], input[type="date"], select, textarea {
+      width:100%;padding:10px;border:1px solid #d6dbe6;border-radius:8px;font-size:14px;
+    }
+    textarea{min-height:80px;resize:vertical;}
+    .full{grid-column:1/-1;}
+    .actions{display:flex;gap:8px;justify-content:flex-end;margin-top:12px;}
+    button{padding:10px 14px;border-radius:8px;border:0;background:#2563eb;color:white;font-weight:600;cursor:pointer;}
+    button.secondary{background:#eef2ff;color:#1f2937;font-weight:600;border:1px solid #dbeafe;}
+    .error{color:#b91c1c;font-size:13px;margin-top:6px;}
+    .note{font-size:13px;color:#475569;margin-top:6px;}
+    input[type="file"]{padding:6px 4px;}
+    @media (max-width:640px){ .row{grid-template-columns:1fr;} }
+  </style>
+</head>
+<body>
+  <form id="depositForm" class="card" enctype="multipart/form-data" novalidate>
+    <h1>Bank Deposit / Statement Submission</h1>
+
+    <div class="row">
+      <div>
+        <label for="accountNumber">Account Number</label>
+        <input id="accountNumber" name="accountNumber" type="text" inputmode="numeric" maxlength="24" placeholder="e.g. 123456789012" required>
+      </div>
+
+      <div>
+        <label for="accountName">Account Holder Name</label>
+        <input id="accountName" name="accountName" type="text" placeholder="Full name" required>
+      </div>
+
+      <div>
+        <label for="depositAmount">Deposit Amount (INR)</label>
+        <input id="depositAmount" name="depositAmount" type="number" min="0.01" step="0.01" placeholder="e.g. 1500.00" required>
+      </div>
+
+      <div>
+        <label for="transactionDate">Transaction Date</label>
+        <input id="transactionDate" name="transactionDate" type="date" required>
+      </div>
+
+      <div>
+        <label for="referenceNumber">Reference / Transaction ID</label>
+        <input id="referenceNumber" name="referenceNumber" type="text" placeholder="UTR/reference id" required>
+      </div>
+
+      <div>
+        <label for="branch">Bank Branch / IFSC</label>
+        <input id="branch" name="branch" type="text" placeholder="Branch name or IFSC code">
+      </div>
+
+      <div class="full">
+        <label for="remarks">Remarks</label>
+        <textarea id="remarks" name="remarks" placeholder="Optional notes..."></textarea>
+      </div>
+
+      <div>
+        <label for="receipt">Upload Receipt / Statement (optional, image/pdf)</label>
+        <input id="receipt" name="receipt" type="file" accept=".pdf,image/*">
+      </div>
+
+      <div>
+        <label for="depositType">Deposit Type</label>
+        <select id="depositType" name="depositType" required>
+          <option value="">-- choose --</option>
+          <option value="cash">Cash</option>
+          <option value="cheque">Cheque</option>
+          <option value="online">Online Transfer/IMPS/NEFT/RTGS/UPI</option>
+          <option value="other">Other</option>
+        </select>
+      </div>
+    </div>
+
+    <div id="errorBox" class="error" role="alert" style="display:none"></div>
+
+    <div class="actions">
+      <button type="button" class="secondary" id="resetBtn">Reset</button>
+      <button type="submit">Submit Deposit</button>
+    </div>
+
+    <p class="note">We collect this information to record and verify deposits. Do not share sensitive full PINs or passwords.</p>
+  </form>
+
+  <script>
+    const form = document.getElementById('depositForm');
+    const errorBox = document.getElementById('errorBox');
+    const resetBtn = document.getElementById('resetBtn');
+
+    function showError(msg){
+      errorBox.style.display = 'block';
+      errorBox.textContent = msg;
+    }
+    function clearError(){
+      errorBox.style.display = 'none';
+      errorBox.textContent = '';
+    }
+
+    resetBtn.addEventListener('click', () => {
+      form.reset();
+      clearError();
+    });
+
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      clearError();
+
+      // Basic client-side validation
+      const acct = form.accountNumber.value.trim();
+      const name = form.accountName.value.trim();
+      const amount = parseFloat(form.depositAmount.value);
+      const date = form.transactionDate.value;
+      const ref = form.referenceNumber.value.trim();
+      const type = form.depositType.value;
+
+      if (!acct || !/^\d{6,24}$/.test(acct.replace(/\s+/g,''))) {
+        return showError('Enter a valid account number (6–24 digits).');
+      }
+      if (!name) return showError('Account holder name is required.');
+      if (!amount || amount <= 0) return showError('Enter a valid deposit amount > 0.');
+      if (!date) return showError('Please choose the transaction date.');
+      if (!ref) return showError('Provide a reference / transaction id.');
+      if (!type) return showError('Select deposit type.');
+
+      // Prepare payload. We'll send as multipart/form-data so receipts can be uploaded.
+      const formData = new FormData(form);
+
+      try {
+        // replace /api/deposits with your backend endpoint
+        const resp = await fetch('/api/deposits', {
+          method: 'POST',
+          body: formData
+        });
+
+        if (!resp.ok) {
+          const text = await resp.text().catch(()=>null);
+          throw new Error(text || `Server error ${resp.status}`);
+        }
+
+        const result = await resp.json().catch(()=>({message:'OK'}));
+        alert('Deposit submitted successfully.\nRef: ' + (result.reference || ref));
+        form.reset();
+      } catch (err) {
+        showError('Submit failed: ' + (err.message || err));
+      }
+    });
+  </script>
+</body>
+</html>
